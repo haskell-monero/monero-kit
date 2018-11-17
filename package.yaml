@@ -20,7 +20,9 @@ description:         Please see the readme on GitHub at <https://github.com/hask
 
 dependencies:
 - base >= 4.7 && < 5
-- cryptonite >= 0.25 && < 1.0
+- bytestring
+- cereal
+- cryptonite
 
 library:
   source-dirs: src
