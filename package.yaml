@@ -1,0 +1,37 @@
+name:                monero-kit
+version:             0.1.0
+github:              "haskell-monero/monero-kit"
+license:             MIT
+author:              "haskell-monero authors"
+maintainer:          "ics@gambolingpangolin.com"
+copyright:           "haskell-monero authors"
+
+extra-source-files:
+- readme.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+synopsis:  A library with support for working with the Monero cryptoasset system 
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the readme on GitHub at <https://github.com/haskell-monero/monero-kit#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- cryptonite >= 0.25 && < 1.0
+
+library:
+  source-dirs: src
+
+tests:
+  monero-kit-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - monero-kit
