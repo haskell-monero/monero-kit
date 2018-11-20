@@ -4,7 +4,7 @@
 
 module Monero () where
 
-import           Crypto.ECC.Ed25519
+import           Crypto.ECC.Edwards25519
 
 
 -- | Every Monero output is owned by a keypair consisting of two Ed25519 keys.
