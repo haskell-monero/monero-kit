@@ -7,11 +7,11 @@ import           Data.Bits
 import           Data.Word
 
 -- | Exponentiation by squaring
-expFaster :: (Integral a, Bits a) => a -> Point -> Point
+expFaster :: Bits a => a -> Point -> Point
 expFaster x p
-  | x == 1
+  | x == bit 0
   = p
-  | x .&. 1 == 1
+  | x `testBit` 0
   = p `pointAdd` expFaster (x `shiftR` 1) (pointDouble p)
   | otherwise
   = expFaster (x `shiftR` 1) (pointDouble p)
