@@ -5,6 +5,10 @@
 module Monero () where
 
 import           Crypto.ECC.Edwards25519
+import           Crypto.Error
+import           Crypto.Hash
+import           Data.ByteArray
+import           Data.ByteString
 
 
 -- | Every Monero output is owned by a keypair consisting of two Ed25519 keys.
@@ -21,8 +25,25 @@ data PublicAddress
 data SpendKey
   = SpendKey
   { spendPriv :: Scalar
-  , viewPriv  :: Scalar
+  , viewPriv  :: Scalar -- Usually a hash of the 'spendPriv'
   } deriving Eq
+
+
+-- | Generate a 'SpendKey' from the spend part of the 'SpendKey' by taking a hash of the private key for the view key.
+spendKey :: Scalar -> SpendKey
+spendKey pk = SpendKey pk (keccakScalar pk)
+
+
+keccakScalar :: Scalar -> Scalar
+keccakScalar = throwCryptoError . scalarDecodeLong . scrubbedKeccak . scalarEncode
+
+
+scrubbedKeccak :: ByteString -> ScrubbedBytes
+scrubbedKeccak = convert . keccak256
+
+
+keccak256 :: ByteString -> Digest Keccak_256
+keccak256 = hash
 
 
 -- | All Monero payments spend to ephemeral addresses, which only the owner of
@@ -38,4 +59,3 @@ newtype StealthAddress = StealthAddress { unStealthAddress :: Point }
 -- giving them the ability to spend
 newtype ViewKey = ViewKey { unViewKey :: Scalar }
   deriving Eq
-
