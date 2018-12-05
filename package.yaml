@@ -23,10 +23,14 @@ dependencies:
 - bytestring
 - cereal
 - cryptonite
+- vector
 
 library:
   source-dirs: src
+  dependencies:
+      - deepseq
 
+  
 tests:
   monero-kit-test:
     main:                Spec.hs
@@ -39,3 +43,16 @@ tests:
     - hspec
     - monero-kit
     - QuickCheck
+
+    
+benchmarks:
+  monero-kit-bench:
+    source-dirs: bench
+    main: Main.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - monero-kit
+      - criterion

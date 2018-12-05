@@ -2,14 +2,20 @@
 -- Module    : Monero
 -- Stability : experimental
 
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+{-# OPTIONS_GHC -fdefer-typed-holes #-}
+
 module Monero
-    ( PublicAddress
+    ( PublicKeypair
     , ViewKey
     , PrivateKeypair
     , toPublic
+    , viewKey
+    , generateRandomKeypair
 
     , StealthAddress
     , isAssociatedStealth
@@ -18,6 +24,7 @@ module Monero
     , subAddress
     ) where
 
+import           Control.DeepSeq         (NFData)
 import           Crypto.ECC.Edwards25519
 import           Crypto.Error
 import           Crypto.Hash
@@ -25,9 +32,12 @@ import           Crypto.Random
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy    as BSL
+import           Data.ByteString.Short   (ShortByteString)
 import           Data.Int
 import           Data.Serialize
+import           Data.Vector             (Vector)
 import           Data.Word
+import           GHC.Generics            (Generic)
 
 -- ~~~~~~~~~ --
 -- Addresses --
@@ -36,19 +46,39 @@ import           Data.Word
 -- | Every Monero output is owned by a keypair consisting of two Ed25519 keys.
 -- These keys are used differently from one another and have different
 -- consequences if compromised (separately).
-data PublicAddress
-    = PublicAddress
+data PublicKeypair
+    = PublicKeypair
     { spendPubkey :: Point
     , viewPubkey  :: Point
     } deriving Eq
 
 
--- | This is the pair of private keys associated with a 'PublicAddress'
+-- | This is the pair of private keys associated with a 'PublicKeypair'
 data PrivateKeypair
     = PrivateKeypair
     { spendPriv :: Scalar
     , viewPriv  :: Scalar
-    } deriving Eq
+    } deriving (Eq, Generic, NFData)
+
+
+-- | The view (private) key of an address can be shared with a third party to
+-- give them visibility over the transactions bound for the address, without
+-- giving them the ability to spend
+newtype ViewKey = ViewKey { unViewKey :: Scalar }
+    deriving Eq
+
+
+-- | Extract the private view key from a keypair
+viewKey :: PrivateKeypair -> ViewKey
+viewKey PrivateKeypair{..} = ViewKey viewPriv
+
+
+-- | Create a keypair where the spend and view keys have no relation to each other
+generateRandomKeypair :: MonadRandom m => m PrivateKeypair
+generateRandomKeypair =
+    scalarGenerate >>= \s ->
+    scalarGenerate >>= \v ->
+        return $ PrivateKeypair s v
 
 
 -- | All Monero payments spend to ephemeral addresses, which only the owner of
@@ -59,31 +89,24 @@ data StealthAddress
     = StealthAddress
     { stealthNonce  :: Point
     , stealthPubkey :: Point
-    }  deriving Eq
-
-
--- | The view (private) key of an address can be shared with a third party to
--- give them visibility over the transactions bound for the address, without
--- giving them the ability to spend
-newtype ViewKey = ViewKey { unViewKey :: Scalar }
-    deriving Eq
+    } deriving (Eq, Generic, NFData)
 
 
 -- | Test to see if a stealth address (R = rG, r A + B = a R + B) belongs to
--- the given PublicAddress
-isAssociatedStealth :: ViewKey -> PublicAddress -> StealthAddress -> Bool
-isAssociatedStealth (ViewKey viewKey) PublicAddress{..} StealthAddress{..} =
+-- the given PublicKeypair
+isAssociatedStealth :: ViewKey -> PublicKeypair -> StealthAddress -> Bool
+isAssociatedStealth (ViewKey viewKey) PublicKeypair{..} StealthAddress{..} =
     (viewKey `pointMul` stealthNonce `pointAdd` spendPubkey) == stealthPubkey
 
 
 -- | Get the public key associated to a private key
-toPublic :: PrivateKeypair -> PublicAddress
-toPublic PrivateKeypair{..} = PublicAddress (toPoint spendPriv) (toPoint viewPriv)
+toPublic :: PrivateKeypair -> PublicKeypair
+toPublic PrivateKeypair{..} = PublicKeypair (toPoint spendPriv) (toPoint viewPriv)
 
 
 -- | Create a new stealth address
-generateStealth :: MonadRandom m => PublicAddress -> m StealthAddress
-generateStealth PublicAddress{..} =
+generateStealth :: MonadRandom m => PublicKeypair -> m StealthAddress
+generateStealth PublicKeypair{..} =
     scalarGenerate >>= \r ->
         let stP = r `pointMul` viewPubkey `pointAdd` spendPubkey in
         pure $ StealthAddress (toPoint r) stP
@@ -123,59 +146,31 @@ subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
 
 
 data Transaction = Transaction
+    deriving Eq
 
 -- ~~~~~~ --
 -- Blocks --
 -- ~~~~~~ --
 
+newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
+    deriving Eq
+
 -- | A Monero block header
 data BlockHeader
-  = BlockHeader
-  { majorVersion   :: Word8
-  , minorVersion   :: Word8
-  , blockTimestamp :: Word64
-  , previousBlock  :: _
-  -- ^ Keccak with 1600-bit digest
-  , blockNonce     :: Word32
-  } deriving Eq
-
-instance Serialize BlockHeader where
-
-  put BlockHeader{..} =
-    BlockHeader
-      <$> putVarint
-      <*> putVarint
-      <*> _ -- putWord64be ?
-      <*> _
-      <*> _
-
-  get =
-    BlockHeader
-    <$> getVarint
-    <*> getVarint
-    <*> _
-    <*> _
-    <*> _
+    = BlockHeader
+    { majorVersion   :: Word8
+    , minorVersion   :: Word8
+    , blockTimestamp :: Word64
+    , previousBlock  :: Hash256
+    , blockNonce     :: Word32
+    } deriving Eq
 
 
 -- | A Monero block
 data Block
-  = Block
-  { blockHeader       :: BlockHeader
-  , coinbaseTx        :: Transaction
-  , transactionHashes :: _
-  -- ^ what structure do these hashes have ?
-  } deriving Eq
+    = Block
+    { blockHeader       :: BlockHeader
+    , coinbaseTx        :: Transaction
+    , transactionHashes :: Vector Hash256
+    } deriving Eq
 
-
--- ~~~~~~~~~~~~~~~~~~~~~ --
--- Serialization helpers --
--- ~~~~~~~~~~~~~~~~~~~~~ --
-
-data Varint = Varint
-
-getVarint :: Get Varint
-getVarint = _
-
-putVarint :: Putter Varint
-putVarint = _
