@@ -26,7 +26,12 @@ import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy    as BSL
 import           Data.Int
+import           Data.Serialize
+import           Data.Word
 
+-- ~~~~~~~~~ --
+-- Addresses --
+-- ~~~~~~~~~ --
 
 -- | Every Monero output is owned by a keypair consisting of two Ed25519 keys.
 -- These keys are used differently from one another and have different
@@ -111,3 +116,66 @@ subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
             BS.int32LE majorIndex <>
             BS.int32LE minorIndex
 
+
+-- ~~~~~~~~~~~~ --
+-- Transactions --
+-- ~~~~~~~~~~~~ --
+
+
+data Transaction = Transaction
+
+-- ~~~~~~ --
+-- Blocks --
+-- ~~~~~~ --
+
+-- | A Monero block header
+data BlockHeader
+  = BlockHeader
+  { majorVersion   :: Word8
+  , minorVersion   :: Word8
+  , blockTimestamp :: Word64
+  , previousBlock  :: _
+  -- ^ Keccak with 1600-bit digest
+  , blockNonce     :: Word32
+  } deriving Eq
+
+instance Serialize BlockHeader where
+
+  put BlockHeader{..} =
+    BlockHeader
+      <$> putVarint
+      <*> putVarint
+      <*> _ -- putWord64be ?
+      <*> _
+      <*> _
+
+  get =
+    BlockHeader
+    <$> getVarint
+    <*> getVarint
+    <*> _
+    <*> _
+    <*> _
+
+
+-- | A Monero block
+data Block
+  = Block
+  { blockHeader       :: BlockHeader
+  , coinbaseTx        :: Transaction
+  , transactionHashes :: _
+  -- ^ what structure do these hashes have ?
+  } deriving Eq
+
+
+-- ~~~~~~~~~~~~~~~~~~~~~ --
+-- Serialization helpers --
+-- ~~~~~~~~~~~~~~~~~~~~~ --
+
+data Varint = Varint
+
+getVarint :: Get Varint
+getVarint = _
+
+putVarint :: Putter Varint
+putVarint = _
