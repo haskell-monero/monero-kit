@@ -15,6 +15,7 @@ module Monero (
       PublicKeypair (..)
     , ViewKey (..)
     , PrivateKeypair
+    , privateKeypair
     , toPublic
     , viewKey
     , generateRandomKeypair
@@ -62,7 +63,7 @@ import           GHC.Generics            (Generic)
 -- | Identifiers of all kinds
 data family Id a
 
--- | FIXME confirm type
+
 newtype instance Id Transaction = TransactionId { unTransactionId :: Hash256 }
     deriving Eq
 
