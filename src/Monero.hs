@@ -6,22 +6,35 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TypeFamilies      #-}
 
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
-module Monero
-    ( PublicKeypair
-    , ViewKey
+module Monero (
+    -- * Keys and addresses
+      PublicKeypair (..)
+    , ViewKey (..)
     , PrivateKeypair
     , toPublic
     , viewKey
     , generateRandomKeypair
 
-    , StealthAddress
+    , StealthAddress (..)
     , isAssociatedStealth
     , generateStealth
 
     , subAddress
+
+    -- * Blocks and transactions
+
+    , Id (..)
+    , Hash256 (..)
+
+    , Transaction
+
+    , BlockHeader (..)
+    , Block (..)
+
     ) where
 
 import           Control.DeepSeq         (NFData)
@@ -38,6 +51,22 @@ import           Data.Serialize
 import           Data.Vector             (Vector)
 import           Data.Word
 import           GHC.Generics            (Generic)
+
+-- ~~~~~~~~~~~~~ --
+-- General types --
+-- ~~~~~~~~~~~~~ --
+
+-- | Identifiers of all kinds
+data family Id a
+
+-- | FIXME confirm type
+newtype instance Id Transaction = TransactionId { unTransactionId :: Hash256 }
+    deriving Eq
+
+-- | For when bytes are actually a hash digest
+newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
+    deriving Eq
+
 
 -- ~~~~~~~~~ --
 -- Addresses --
@@ -83,13 +112,11 @@ generateRandomKeypair =
 
 -- | All Monero payments spend to ephemeral addresses, which only the owner of
 -- the view private key can recognize.
---
--- - [ ] Serialize instance
 data StealthAddress
     = StealthAddress
     { stealthNonce  :: Point
     , stealthPubkey :: Point
-    } deriving (Eq, Generic, NFData)
+    } deriving (Eq, Show, Generic, NFData)
 
 
 -- | Test to see if a stealth address (R = rG, r A + B = a R + B) belongs to
@@ -124,8 +151,9 @@ generateStealth PublicKeypair{..} =
 -- > m = le_int32_to_scalar(keccak256("SubAddr"|a|i|j))
 --
 -- monero-project/monero:
--- * ab6c17cc154914df61778ad48577ed70d8b03f88:src/device/device_default.cpp#L127
--- * ab6c17cc154914df61778ad48577ed70d8b03f88:src/device/device_default.cpp#L197
+--
+-- - @ab6c17cc154914df61778ad48577ed70d8b03f88:src\/device/device_default.cpp#L127@
+-- - @ab6c17cc154914df61778ad48577ed70d8b03f88:src\/device/device_default.cpp#L197@
 --
 subAddress :: PrivateKeypair -> Int32 -> Int32 -> PrivateKeypair
 subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
@@ -145,15 +173,13 @@ subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
 -- ~~~~~~~~~~~~ --
 
 
+-- | Placeholder
 data Transaction = Transaction
     deriving Eq
 
 -- ~~~~~~ --
 -- Blocks --
 -- ~~~~~~ --
-
-newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
-    deriving Eq
 
 -- | A Monero block header
 data BlockHeader
@@ -162,6 +188,7 @@ data BlockHeader
     , minorVersion   :: Word8
     , blockTimestamp :: Word64
     , previousBlock  :: Hash256
+    -- ^ FIXME confirm type
     , blockNonce     :: Word32
     } deriving Eq
 
@@ -171,6 +198,6 @@ data Block
     = Block
     { blockHeader       :: BlockHeader
     , coinbaseTx        :: Transaction
-    , transactionHashes :: Vector Hash256
+    , transactionHashes :: Vector (Id Transaction)
     } deriving Eq
 
