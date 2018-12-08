@@ -19,6 +19,7 @@ expFaster x p
     = expFaster (x `shiftR` 1) (pointDouble p)
 
 
+main :: IO ()
 main = do
 
     [x0, x1] <- replicateM 2 scalarGenerate
