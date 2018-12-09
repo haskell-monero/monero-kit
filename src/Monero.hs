@@ -36,6 +36,9 @@ module Monero (
     , BlockHeader (..)
     , Block (..)
 
+    -- * Others
+    , VarInt (..)
+
     ) where
 
 import           Control.DeepSeq         (NFData)
@@ -43,6 +46,7 @@ import           Crypto.ECC.Edwards25519
 import           Crypto.Error
 import           Crypto.Hash
 import           Crypto.Random
+import           Data.Bits
 import           Data.ByteArray
 import           Data.ByteString         (ByteString)
 import qualified Data.ByteString         as BS
@@ -247,3 +251,34 @@ data Block
     , coinbaseTx        :: Transaction
     , transactionHashes :: Vector (Id Transaction)
     } deriving Eq
+
+
+-- ~~~~~~~~~~~~~ --
+-- Wire protocol --
+-- ~~~~~~~~~~~~~ --
+
+newtype VarInt
+    = VarInt Integer
+    deriving (Eq, Ord, Show)
+
+
+-- | Varint serialization in Monero is different from Bitcoin's.
+instance Serialize VarInt where
+
+    get = VarInt <$> go 0
+        where
+            go n = getWord8 >>= \w ->
+                let b = (fromIntegral $ w .&. 0x7f) `shiftL` (7 * n) in
+                if testBit w 7
+                    then (+ b) <$> go (n+1)
+                    else return b
+
+    put (VarInt i) = go i
+        where
+            w8 :: Integer -> Word8
+            w8 = fromIntegral
+            go i
+                | i >= 0x80
+                = let x = (w8 i .&. 0x7f) .|. 0x80 in
+                    put x >> go (i `shiftR` 7)
+                | otherwise = put $ w8 i
