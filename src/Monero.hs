@@ -75,6 +75,10 @@ newtype instance Id Transaction = TransactionId { unTransactionId :: Hash256 }
 newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
     deriving Eq
 
+instance Serialize Hash256 where
+
+    get = Hash256 <$> getShortByteString 4
+    put (Hash256 x) = put x
 
 -- ~~~~~~~~~ --
 -- Addresses --
@@ -262,7 +266,9 @@ newtype VarInt
     deriving (Eq, Ord, Show)
 
 
--- | Varint serialization in Monero is different from Bitcoin's.
+-- | Varint serialization in Monero is different from Bitcoin's.  In this
+-- encoding, a non-negative integer @n@ serializes into @ceiling (log_2 n / 7)@
+-- bytes.
 instance Serialize VarInt where
 
     get = VarInt <$> go 0
