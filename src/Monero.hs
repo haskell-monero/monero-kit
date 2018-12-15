@@ -36,10 +36,12 @@ module Monero (
 
     , BlockHeader (..)
     , Block (..)
+    , blockId
 
     -- * Others
     , VarInt (..)
     , varInt
+    , treeReduce
 
     ) where
 
@@ -56,7 +58,9 @@ import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.ByteString.Lazy    as BSL
 import           Data.ByteString.Short   (ShortByteString)
+import qualified Data.ByteString.Short   as BSS
 import           Data.Int
+import           Data.Maybe
 import           Data.Serialize
 import           Data.Vector             (Vector)
 import qualified Data.Vector             as Vector
@@ -84,7 +88,7 @@ instance Serialize (Id Transaction) where
 
 -- | For when bytes are actually a hash digest
 newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
-    deriving Eq
+    deriving (Eq, Show)
 
 
 instance Serialize Hash256 where
@@ -146,7 +150,7 @@ viewKey :: PrivateKeypair -> ViewKey
 viewKey = ViewKey . viewPriv
 
 
--- | Create a keypair where the spend and view keys have no relation to each other
+-- | Generate a random keypair
 generateRandomKeypair :: MonadRandom m => m PrivateKeypair
 generateRandomKeypair = privateKeypair <$> scalarGenerate
 
@@ -180,43 +184,6 @@ generateStealth PublicKeypair{..} =
         pure $ StealthAddress (toPoint r) stP
 
 
--- ~~~~~~~~~~~~ --
--- Transactions --
--- ~~~~~~~~~~~~ --
-
-
-data Transaction
-    = Transaction
-    { version       :: Word64
-    , unlockTime    :: Word64
-    , vin           :: [TxIn]
-    , vout          :: [TxOut]
-    , extra         :: ByteString
-    , signatures    :: [[Signature]]
-    , rctSignatures :: RctSig
-    } deriving Eq
-
-
-data Signature = Signature
-    deriving Eq
-
-
-data RctSig = RctSig
-    deriving Eq
-
-
-data TxIn
-    = TxIn
-    {
-    } deriving Eq
-
-
-data TxOut
-    = TxOut
-    {
-    } deriving Eq
-
-
 -- | Derive a subaddress
 --
 -- Subaddresses are parameterized by major and minor indices @(i,j)@.  The major
@@ -239,11 +206,56 @@ subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
         s = k `scalarAdd` spendPriv
         v = viewPriv `scalarMul` s
         k = throwCryptoError $ scalarDecodeLong m
-        m = hashWith Keccak_256 . BSL.toStrict . BS.toLazyByteString $
+        m = keccak256 . BSL.toStrict . BS.toLazyByteString $
             BS.byteString "SubAddr" <>
             BS.byteString (scalarEncode viewPriv) <>
             BS.word32LE majorIndex <>
             BS.word32LE minorIndex
+
+
+-- ~~~~~~~~~~~~ --
+-- Transactions --
+-- ~~~~~~~~~~~~ --
+
+
+data Transaction
+    = Transaction
+    { version       :: Word64
+    , unlockTime    :: Word64
+    , vin           :: [TxIn]
+    , vout          :: [TxOut]
+    , extra         :: ByteString
+    , signatures    :: [[Signature]]
+    , rctSignatures :: RctSig
+    } deriving Eq
+
+instance Serialize Transaction where
+
+    get = _
+    put = _
+
+
+data Signature = Signature
+    deriving Eq
+
+
+data RctSig = RctSig
+    deriving Eq
+
+
+data TxIn
+    = TxIn
+    {
+    } deriving Eq
+
+
+data TxOut
+    = TxOut
+    {
+    } deriving Eq
+
+
+transactionId = _
 
 
 -- ~~~~~~ --
@@ -269,7 +281,7 @@ instance Serialize BlockHeader where
         getVarInt <*>
         getVarInt <*>
         get <*>
-        getVarInt
+        get
         where
             getVarInt :: Integral a => Get a
             getVarInt = fromVarInt <$> get
@@ -280,7 +292,7 @@ instance Serialize BlockHeader where
         put (varInt minorVersion)
         put (varInt blockTimestamp)
         put previousBlock
-        put (varInt blockNonce)
+        put blockNonce
 
 
 -- | A Monero block
@@ -296,6 +308,75 @@ instance Serialize Block where
 
     get = Block <$> get <*> get <*> getVector
     put Block{..} = put blockHeader >> put coinbaseTx <* putVector transactionHashes
+
+
+-- | Compute the hash of a block as @keccak256@ over the concatenation of
+--
+-- * serialized block header
+-- * Merkle root of collection of transaction ids @[coinbase, tx0, tx1, ..]@
+-- * Included transaction count (varint encoded)
+--
+-- TODO include the logic for dealing with block 202612
+blockId :: BlockHeader
+    -> Id Transaction
+    -- ^ coinbase transaction
+    -> Vector (Id Transaction)
+    -- ^ included transactions
+    -> Hash256
+blockId header coinbaseId txHashes =
+    Hash256 $ BSS.toShort $ convert $ keccak256 $ payload
+    where
+
+        txCount = Vector.length txHashes + 1 -- add one for the coinbase
+        hashes = unTransactionId <$> (coinbaseId `Vector.cons` txHashes)
+        txRoot = treeReduce hashMerge hashes
+
+        payload = runPut $ put header >> put txRoot >> put (varInt txCount)
+
+
+hashMerge :: Hash256 -> Hash256 -> Hash256
+hashMerge (Hash256 x) (Hash256 y) = Hash256 $ BSS.toShort $ convert $ keccak256 (BSS.fromShort $ x <> y)
+
+
+-- | A generic implementation of the algorithm used by Monero to compute the
+-- Merkle root of a list of transactions
+--
+-- _Assumption: input vectors are nonempty_
+treeReduce :: (a -> a -> a) -> Vector a -> a
+treeReduce op xs
+    | n == 1 = xs Vector.! 0
+    | n == m = treeReduce' xs
+    | otherwise = treeReduce' xs'
+    where
+
+        n = Vector.length xs
+
+        -- largest power of two not exceeding n
+        m = let l = floor (logBase 2 (fromIntegral n)) in 1 `shiftL` l
+
+        treeReduce' xs
+            | Vector.length xs == 1 = xs Vector.! 0
+            | otherwise = treeReduce' $ halve xs
+
+        halve xs = Vector.generate (Vector.length xs `shiftR` 1) $ \i ->
+            let j = 2*i
+                u = xs Vector.! j
+                v = xs Vector.! (j+1)
+            in u `op` v
+
+
+        -- Shrink xs to have length m by applying op to the trailing 2 * (m - k) elements
+        xs' = let k = 2*m - n in
+                Vector.generate m $ \i ->
+                    if i < k
+                    then xs Vector.! i
+                    else
+                        let j = 2 * i - k
+                            u = xs Vector.! j
+                            v = xs Vector.! (j+1)
+                        in u `op` v
+
+
 
 -- ~~~~~~~~~~~~~ --
 -- Wire protocol --
@@ -347,3 +428,5 @@ instance Serialize VarInt where
                 = let x = (w8 i .&. 0x7f) .|. 0x80 in
                     put x >> go (i `shiftR` 7)
                 | otherwise = put $ w8 i
+
+

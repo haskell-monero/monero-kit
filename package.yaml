@@ -21,6 +21,7 @@ description:         Please see the readme on GitHub at <https://github.com/hask
 dependencies:
   - base >= 4.7 && < 5
   - bytestring
+  - base16-bytestring
   - cereal
   - cryptonite
   - memory
