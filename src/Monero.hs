@@ -62,9 +62,11 @@ import           GHC.Generics            (Generic)
 -- | Identifiers of all kinds
 data family Id a
 
+
 -- | FIXME confirm type
 newtype instance Id Transaction = TransactionId { unTransactionId :: Hash256 }
     deriving Eq
+
 
 -- | For when bytes are actually a hash digest
 newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
@@ -82,7 +84,7 @@ data PublicKeypair
     = PublicKeypair
     { spendPubkey :: Point
     , viewPubkey  :: Point
-    } deriving Eq
+    } deriving (Show, Eq)
 
 
 -- | This is the pair of private keys associated with a 'PublicKeypair'
@@ -90,7 +92,7 @@ data PrivateKeypair
     = PrivateKeypair
     { spendPriv :: Scalar
     , viewPriv  :: Scalar
-    } deriving (Eq, Generic, NFData)
+    } deriving (Show, Eq, Generic, NFData)
 
 
 -- | Generate a 'PrivateKeypair' from the spend part of the 'PrivateKeypair' by taking a
@@ -120,12 +122,12 @@ newtype ViewKey = ViewKey { unViewKey :: Scalar }
 
 -- | Extract the private view key from a keypair
 viewKey :: PrivateKeypair -> ViewKey
-viewKey PrivateKeypair{..} = ViewKey viewPriv
+viewKey = ViewKey . viewPriv
 
 
 -- | Create a keypair where the spend and view keys have no relation to each other
 generateRandomKeypair :: MonadRandom m => m PrivateKeypair
-generateRandomKeypair = PrivateKeypair <$> scalarGenerate <*> scalarGenerate
+generateRandomKeypair = privateKeypair <$> scalarGenerate
 
 
 -- | All Monero payments spend to ephemeral addresses, which only the owner of
@@ -210,7 +212,7 @@ data TxOut
 -- - @ab6c17cc154914df61778ad48577ed70d8b03f88:src\/device/device_default.cpp#L127@
 -- - @ab6c17cc154914df61778ad48577ed70d8b03f88:src\/device/device_default.cpp#L197@
 --
-subAddress :: PrivateKeypair -> Int32 -> Int32 -> PrivateKeypair
+subAddress :: PrivateKeypair -> Word32 -> Word32 -> PrivateKeypair
 subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
     where
         s = k `scalarAdd` spendPriv
@@ -219,8 +221,8 @@ subAddress PrivateKeypair{..} majorIndex minorIndex = PrivateKeypair s v
         m = hashWith Keccak_256 . BSL.toStrict . BS.toLazyByteString $
             BS.byteString "SubAddr" <>
             BS.byteString (scalarEncode viewPriv) <>
-            BS.int32LE majorIndex <>
-            BS.int32LE minorIndex
+            BS.word32LE majorIndex <>
+            BS.word32LE minorIndex
 
 
 -- ~~~~~~ --
