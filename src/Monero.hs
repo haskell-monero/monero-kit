@@ -4,6 +4,7 @@
 
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -38,10 +39,12 @@ module Monero (
 
     -- * Others
     , VarInt (..)
+    , varInt
 
     ) where
 
 import           Control.DeepSeq         (NFData)
+import           Control.Monad
 import           Crypto.ECC.Edwards25519
 import           Crypto.Error
 import           Crypto.Hash
@@ -56,6 +59,7 @@ import           Data.ByteString.Short   (ShortByteString)
 import           Data.Int
 import           Data.Serialize
 import           Data.Vector             (Vector)
+import qualified Data.Vector             as Vector
 import           Data.Word
 import           GHC.Generics            (Generic)
 
@@ -71,18 +75,28 @@ data family Id a
 newtype instance Id Transaction = TransactionId { unTransactionId :: Hash256 }
     deriving Eq
 
+
+instance Serialize (Id Transaction) where
+
+    get = (TransactionId . Hash256) <$> getShortByteString 32
+    put (TransactionId (Hash256 x)) = putShortByteString x
+
+
 -- | For when bytes are actually a hash digest
 newtype Hash256 = Hash256 { unHash256 :: ShortByteString }
     deriving Eq
 
+
 instance Serialize Hash256 where
 
-    get = Hash256 <$> getShortByteString 4
-    put (Hash256 x) = put x
+    get = Hash256 <$> getShortByteString 32
+    put (Hash256 x) = putShortByteString x
+
 
 -- ~~~~~~~~~ --
 -- Addresses --
 -- ~~~~~~~~~ --
+
 
 -- | Every Monero output is owned by a keypair consisting of two Ed25519 keys.
 -- These keys are used differently from one another and have different
@@ -248,6 +262,27 @@ data BlockHeader
     } deriving Eq
 
 
+instance Serialize BlockHeader where
+
+    get = BlockHeader <$>
+        getVarInt <*>
+        getVarInt <*>
+        getVarInt <*>
+        get <*>
+        getVarInt
+        where
+            getVarInt :: Integral a => Get a
+            getVarInt = fromVarInt <$> get
+
+
+    put BlockHeader{..} = do
+        put (varInt majorVersion)
+        put (varInt minorVersion)
+        put (varInt blockTimestamp)
+        put previousBlock
+        put (varInt blockNonce)
+
+
 -- | A Monero block
 data Block
     = Block
@@ -257,13 +292,37 @@ data Block
     } deriving Eq
 
 
+instance Serialize Block where
+
+    get = Block <$> get <*> get <*> getVector
+    put Block{..} = put blockHeader >> put coinbaseTx <* putVector transactionHashes
+
 -- ~~~~~~~~~~~~~ --
 -- Wire protocol --
 -- ~~~~~~~~~~~~~ --
 
+-- | In Monero, varint is an encoding for arbitrary bitstreams
 newtype VarInt
-    = VarInt Integer
+    = VarInt { unVarInt :: Integer }
     deriving (Eq, Ord, Show)
+
+
+varInt :: Integral a => a -> VarInt
+varInt = VarInt . fromIntegral
+
+
+fromVarInt :: Num a => VarInt -> a
+fromVarInt (VarInt x) = fromIntegral x
+
+
+getVector :: Serialize a => Get (Vector a)
+getVector =
+    get >>= \(VarInt l) ->
+    sequence $ Vector.generate (fromIntegral l) (const get)
+
+
+putVector :: Serialize a => Putter (Vector a)
+putVector v = put (varInt $ Vector.length v) <* (traverse put v)
 
 
 -- | Varint serialization in Monero is different from Bitcoin's.  In this
