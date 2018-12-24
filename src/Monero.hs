@@ -62,6 +62,8 @@ import qualified Data.ByteString.Short   as BSS
 import           Data.Int
 import           Data.Maybe
 import           Data.Serialize
+import qualified Data.Serialize.Get      as Get
+import qualified Data.Serialize.Put      as Put
 import           Data.Vector             (Vector)
 import qualified Data.Vector             as Vector
 import           Data.Word
@@ -281,7 +283,7 @@ instance Serialize BlockHeader where
         getVarInt <*>
         getVarInt <*>
         get <*>
-        get
+        Get.getWord32le
         where
             getVarInt :: Integral a => Get a
             getVarInt = fromVarInt <$> get
@@ -292,7 +294,7 @@ instance Serialize BlockHeader where
         put (varInt minorVersion)
         put (varInt blockTimestamp)
         put previousBlock
-        put blockNonce
+        Put.putWord32le blockNonce
 
 
 -- | A Monero block
