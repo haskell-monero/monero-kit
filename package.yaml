@@ -11,7 +11,7 @@ extra-source-files:
 - ChangeLog.md
 
 # Metadata used when publishing your package
-synopsis:  A library with support for working with the Monero cryptoasset system 
+synopsis:  A library with support for working with the Monero cryptoasset system
 
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
@@ -19,22 +19,40 @@ synopsis:  A library with support for working with the Monero cryptoasset system
 description:         Please see the readme on GitHub at <https://github.com/haskell-monero/monero-kit#readme>
 
 dependencies:
-- base >= 4.7 && < 5
-- bytestring
-- cereal
-- cryptonite
-- vector
+  - base >= 4.7 && < 5
+  - bytestring
+  - base16-bytestring
+  - cereal
+  - cryptonite
+  - memory
+  - vector
+  - deepseq
 
 library:
   source-dirs: src
 
-benchmarks:
-  baseline:
-    source-dirs: bench
-    main: Baseline.hs
+tests:
+  monero-kit-test:
+    source-dirs: test
+    main: Spec.hs
     ghc-options:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
-      criterion
+    - hspec
+    - monero-kit
+    - QuickCheck
+
+
+benchmarks:
+  monero-kit-bench:
+    source-dirs: bench
+    main: Main.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - monero-kit
+      - criterion
