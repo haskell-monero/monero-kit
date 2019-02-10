@@ -5,6 +5,7 @@ import qualified Data.ByteString.Short  as BSS
 import           Data.Serialize
 import qualified Data.Vector            as Vector
 import           Monero
+import           Monero.Bulletproofs
 import           Test.Hspec
 import           Test.QuickCheck
 
@@ -22,7 +23,7 @@ main = hspec $ do
             stealth `shouldSatisfy` isAssociatedStealth (viewKey sk) (toPublic sk)
 
 
-    describe "subaddresses" $ do
+    describe "subaddresses" $
 
         it "should match the output of the reference wallet" False
 
@@ -44,7 +45,7 @@ main = hspec $ do
             -- ^ from the monero test suite
 
 
-    describe "blocks" $ do
+    describe "blocks" $
 
         describe "block hash" $ do
 
@@ -90,3 +91,11 @@ main = hspec $ do
 
         it "should treeReduce correctly" $
             treeReduce f (Vector.fromList $ show <$> [1..7]) == "((1,(2,3)),((4,5),(6,7)))"
+
+    describe "rangeproofs" $ do
+
+        r <- runIO $ proofRandomness 30
+        p <- runIO $ generateParams 30
+
+        it "should verify a rangeproof" $
+            verify p (verifierRandomness r) $ prove p r 123454321

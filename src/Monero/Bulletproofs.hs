@@ -14,8 +14,11 @@ module Monero.Bulletproofs
     , Nonzero (..)
 
     , prove
-    , proofRandomness
     , verify
+
+    , proofRandomness
+    , generateParams
+    , verifierRandomness
     ) where
 
 
@@ -62,20 +65,33 @@ data ProofRandomValues
         (Nonzero Scalar) (Nonzero Scalar) Scalar Scalar (Nonzero Scalar)
 
 
+verifierRandomness (ProofRandomValues _ _ _ _ _ x y _ _ z) = (x, y, z)
+
 -- | Generate the randomness for a bulletproof
 proofRandomness :: Int -> IO ProofRandomValues
 proofRandomness n = attempt >>= validate
   where
     attempt = ProofRandomValues <$> scalarGenerate <*> scalarGenerate
-        <*> vectorGenerate <*> vectorGenerate <*> scalarGenerate
+        <*> vectorGenerate n <*> vectorGenerate n <*> scalarGenerate
         <*> (Nonzero <$> scalarGenerate) <*> (Nonzero <$> scalarGenerate)
         <*> scalarGenerate <*> scalarGenerate <*> (Nonzero <$> scalarGenerate)
 
-    vectorGenerate = V.sequence . V.generate n $ const scalarGenerate
 
     validate prv@(ProofRandomValues _ _ _ _ _ (Nonzero x) (Nonzero y) _ _ (Nonzero z)) =
         bool (proofRandomness n) (return prv) $
         x /= zeroScalar && y /= zeroScalar && z /= zeroScalar
+
+
+vectorGenerate n = V.sequence . V.generate n $ const scalarGenerate
+
+
+-- | Generate random parameters
+generateParams :: Int -> IO Params
+generateParams n =
+    Params <$> (toPoint <$> scalarGenerate) <*> pure n
+    <*> (f <$> vectorGenerate n <*> vectorGenerate n)
+  where
+    f v1 v2 = (toPoint <$> v1) `V.zip` (toPoint <$> v2)
 
 
 -- ~~~~~~~~~~~ --
@@ -122,15 +138,15 @@ prove p rv v =
     t2 = scalarCommitment' t2' τ2
 
 
-    l0 = V.map toScalar al `vsa` V.generate n (const z)
+    l0 = fmap toScalar al `vsa` V.generate n (const z)
     l1 = sl
 
     r0 = generate n $ \i ->
         (scalarPow i y `scalarMul` toScalar (ar V.! i)) `scalarAdd` z `scalarAdd` (z2 `scalarMul` toScalar (2^i))
     r1 = sr
 
-    l = l0 `vsa` V.map (scalarMul x) l1
-    r = r0 `vsa` V.map (scalarMul x) r1
+    l = l0 `vsa` fmap (scalarMul x) l1
+    r = r0 `vsa` fmap (scalarMul x) r1
 
 
     τx = (τ1 `scalarMul` x) `scalarAdd` (τ2 `scalarMul` x2) `scalarAdd` (z2 `scalarMul` γ)
@@ -151,7 +167,7 @@ prove p rv v =
     al = V.generate n $ bool 0 1 . testBit v
 
     ar :: Vector Int64
-    ar = V.map (\i -> i - 1) al
+    ar = fmap (\i -> i - 1) al
 
     commitmentA =
         V.foldl' pointAdd zeroPoint . V.zipWith f u . paramsVec $ p
@@ -165,7 +181,7 @@ prove p rv v =
     -- z^2
     z2 = z `scalarMul` z
 
-    ProofRandomValues γ α sl sr ρ (Nonzero y) (Nonzero z) τ1 τ2 (Nonzero x) = rv
+    ProofRandomValues γ α sl sr ρ (Nonzero x) (Nonzero y) τ1 τ2 (Nonzero z) = rv
 
 
 
