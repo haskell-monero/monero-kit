@@ -8,6 +8,7 @@ module Crypto.ECC.Edwards25519.Extra
     ( toScalar
     , scalarSub
     , scalarNeg
+    , scalarInv
     , pointMulInt
 
     -- * Constants
@@ -19,10 +20,11 @@ module Crypto.ECC.Edwards25519.Extra
 
 import           Crypto.ECC.Edwards25519
 import           Crypto.Error
+import           Crypto.Number.ModArithmetic as MA
 import           Data.Bits
-import           Data.ByteString         as BS
-import           Data.ByteString.Builder as BSB
-import           Data.ByteString.Lazy    as BSL
+import           Data.ByteString             as BS
+import           Data.ByteString.Builder     as BSB
+import           Data.ByteString.Lazy        as BSL
 import           Data.Int
 import           Data.Word
 
@@ -35,13 +37,18 @@ groupOrder = 2^252 + 27742317777372353535851937790883648493
 
 zeroPoint = toPoint zeroScalar
 zeroScalar = throwCryptoError . scalarDecodeLong $ BS.empty
-negativeOne = throwCryptoError . scalarDecodeLong . BS.pack . littleEndian $ groupOrder - 1
+negativeOne = throwCryptoError . scalarDecodeLong
+    . BS.pack . encodeLittleEndian $ groupOrder - 1
 
 
 -- Some "missing" combinators
 
 scalarNeg = scalarMul negativeOne
 scalarSub x = scalarAdd x . scalarNeg
+
+scalarInv x = toScalar <$> MA.inverse x' groupOrder
+  where
+    x' = decodeLittleEndian . BS.unpack . scalarEncode $ x
 
 
 -- | Multiply a point by an 'Int64' instead of a 'Scalar'
@@ -50,6 +57,7 @@ pointMulInt = pointMul . toScalar
 
 
 -- | Warning this only works for non-negative values
+toScalar :: (Bits a, Integral a) => a -> Scalar
 toScalar x
     | x >= 0
     = toScalarPos x
@@ -58,16 +66,19 @@ toScalar x
     = scalarNeg . toScalarPos . negate $ x
   where
     toScalarPos = throwCryptoError . scalarDecodeLong
-        . BSL.toStrict . BSB.toLazyByteString . BSB.int64LE
+        . BS.pack . encodeLittleEndian
 
 
 -- | We need a version of little endian encoding for huge ints
-littleEndian :: Integer -> [Word8]
-littleEndian x
+encodeLittleEndian :: (Integral a, Bits a) => a -> [Word8]
+encodeLittleEndian x
     | x == 0
     = []
 
     | otherwise
-    = fromIntegral (x .&. 255) : littleEndian (x `shiftR` 8)
+    = fromIntegral (x .&. 255) : encodeLittleEndian (x `shiftR` 8)
 
 
+decodeLittleEndian :: [Word8] -> Integer
+decodeLittleEndian []     = 0
+decodeLittleEndian (x:xs) = fromIntegral x + 256 * decodeLittleEndian xs

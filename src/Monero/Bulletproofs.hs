@@ -123,7 +123,7 @@ prove p rv v =
 
     n = paramsN p
 
-    vv = scalarCommitment' (toScalar . fromIntegral $ v) γ
+    vv = scalarCommitment' (toScalar v) γ
 
     a = (α `pointMul` h) `pointAdd` commitmentA
     s = (ρ `pointMul` h) `pointAdd` vectorCommitment' (sl `V.zip` sr)
@@ -142,7 +142,9 @@ prove p rv v =
     l1 = sl
 
     r0 = generate n $ \i ->
-        (scalarPow i y `scalarMul` toScalar (ar V.! i)) `scalarAdd` z `scalarAdd` (z2 `scalarMul` toScalar (2^i))
+        (scalarPow i y `scalarMul` toScalar (ar V.! i))
+        `scalarAdd` z
+        `scalarAdd` (z2 `scalarMul` toScalar (2^i :: Word64))
     r1 = sr
 
     l = l0 `vsa` fmap (scalarMul x) l1
@@ -204,21 +206,20 @@ verify p@Params{..} (Nonzero x, Nonzero y, Nonzero z) proof = condition1 && cond
     -- - z^2 * < 1^n, y^n > - z^3 * < 1^n , 2^n >
     k = scalarNeg $
         (z2 `scalarMul` (oneN `innerP` yn))
-        `scalarAdd` (z3 `scalarMul` toScalar (2 ^ (n+1) - 1))
+        `scalarAdd` (z3 `scalarMul` toScalar (2 ^ (n+1) - 1 :: Word64))
 
-    oneN = V.generate n . const . toScalar $ 1
+    oneN = V.generate n . const . toScalar $ (1 :: Word8)
     yn = V.generate n $ flip scalarPow y
 
     x2 = x `scalarMul` x
     z2 = z `scalarMul` z
     z3 = z `scalarMul` z2
 
-    pp = a `pointAdd` (x `pointMul` s)
-        `pointAdd` w1
+    pp = a `pointAdd` (x `pointMul` s) `pointAdd` w1
 
     w1 = vectorCommitment p' $ V.generate n $ \i ->
         ( scalarNeg z
-        , (z `scalarMul` scalarPow i y) `scalarAdd` (z2 `scalarMul` toScalar (2^i))
+        , (z `scalarMul` scalarPow i y) `scalarAdd` (z2 `scalarMul` toScalar (2^i :: Word64))
         )
 
     p' = Params paramsH n (V.imap f paramsVec)
@@ -243,6 +244,7 @@ vsa = V.zipWith scalarAdd
 innerP u v = V.foldl' scalarAdd zeroScalar $ u `vsm` v
 
 -- | Raise a scalar to a power
+scalarPow :: Int -> Scalar -> Scalar
 scalarPow i x
     | x == zeroScalar
     = zeroScalar
@@ -250,5 +252,8 @@ scalarPow i x
     | i > 0
     = x `scalarMul` scalarPow (i-1) x
 
-    | otherwise
-    = toScalar 1
+    | i == 0
+    = toScalar (1 :: Word8)
+
+    | i < 0
+    = maybe zeroScalar (scalarPow $ negate i) $ scalarInv x
