@@ -8,20 +8,23 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Monero.Bulletproofs
-    ( prove
+    ( Params (..)
+    , Bulletproof (..)
+    , ProofRandomValues (..)
+    , Nonzero (..)
+
+    , prove
+    , proofRandomness
     , verify
     ) where
 
 
-import           Crypto.ECC.Edwards25519 as Ed
-import           Crypto.Error            as Err
-import           Data.Bits               as B
+import           Crypto.ECC.Edwards25519       as Ed
+import           Crypto.ECC.Edwards25519.Extra
+import           Data.Bits                     as B
 import           Data.Bool
-import           Data.ByteString         as BS
-import           Data.ByteString.Builder as BSB
-import           Data.ByteString.Lazy    as BSL
 import           Data.Int
-import           Data.Vector             as V
+import           Data.Vector                   as V
 import           Data.Word
 
 
@@ -209,43 +212,9 @@ verify p@Params{..} (Nonzero x, Nonzero y, Nonzero z) proof = condition1 && cond
     Bulletproof v l r (a, s, t1, t2) (τx, μ, t) = proof
 
 
--- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ --
--- Extensions to the Ed25519 api --
--- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ --
-
-
-groupOrder :: Integer
-groupOrder = 2^252 + 27742317777372353535851937790883648493
-
-
--- Useful constants
-
-zeroPoint = toPoint zeroScalar
-zeroScalar = throwCryptoError . scalarDecodeLong $ BS.empty
-negativeOne = throwCryptoError . scalarDecodeLong . BS.pack . littleEndian $ groupOrder - 1
-
-
--- Some "missing" combinators
-
-scalarNeg = scalarMul negativeOne
-scalarSub x = scalarAdd x . scalarNeg
-
-
--- | Multiply a point by an 'Int64' instead of a 'Scalar'
-pointMulInt :: Int64 -> Point -> Point
-pointMulInt = pointMul . toScalar
-
-
--- | Warning this only works for non-negative values
-toScalar x
-    | x >= 0
-    = toScalarPos x
-
-    | x < 0
-    = scalarNeg . toScalarPos . negate $ x
-  where
-    toScalarPos = throwCryptoError . scalarDecodeLong
-        . BSL.toStrict . BSB.toLazyByteString . BSB.int64LE
+-- ~~~~~~~~~~~~~~~~~ --
+-- Utility functions --
+-- ~~~~~~~~~~~~~~~~~ --
 
 
 -- | Vector pointwise scalar multiplication
@@ -267,14 +236,3 @@ scalarPow i x
 
     | otherwise
     = toScalar 1
-
--- | We need a version of little endian encoding for huge ints
-littleEndian :: Integer -> [Word8]
-littleEndian x
-    | x == 0
-    = []
-
-    | otherwise
-    = fromIntegral (x .&. 255) : littleEndian (x `shiftR` 8)
-
-
