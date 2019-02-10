@@ -1,7 +1,8 @@
 -- |
 -- Module: Monero.Bulletproofs
 --
--- Stage 1: implement the range proof from the bulletproofs paper
+-- Stage 1: implement the range proof from the bulletproofs paper (long
+-- version)
 -- Stage 2: port the algorithm from monero-project/monero
 
 {-# LANGUAGE RecordWildCards #-}
@@ -29,6 +30,7 @@ import           Data.Word
 data Params
     = Params
     { paramsH   :: Point
+    , paramsN   :: Int
     , paramsVec ::  Vector (Point, Point)
     }
 
@@ -88,8 +90,8 @@ vectorCommitment Params{..} = V.foldl' pointAdd zeroPoint . V.zipWith f paramsVe
     f (g, h) (x, y) = (x `pointMul` g) `pointAdd` (y `pointMul` h)
 
 
-prove :: Params -> ProofRandomValues -> Int -> Word64 -> Bulletproof
-prove p rv n v =
+prove :: Params -> ProofRandomValues -> Word64 -> Bulletproof
+prove p rv v =
     Bulletproof
     { bulletproofV=vv
     , bulletproofL=l
@@ -99,6 +101,8 @@ prove p rv n v =
     }
 
   where
+
+    n = paramsN p
 
     vv = scalarCommitment' (toScalar . fromIntegral $ v) γ
 
@@ -164,21 +168,43 @@ prove p rv n v =
 
 -- | Verify a bulletproof
 verify :: Params -> (Nonzero Scalar, Nonzero Scalar, Nonzero Scalar) -> Bulletproof -> Bool
-verify p@Params{..} (x, y, z) proof = condition1 && condition2 && condition3
+verify p@Params{..} (Nonzero x, Nonzero y, Nonzero z) proof = condition1 && condition2 && condition3
   where
     condition1 = t == l `innerP` r
     condition2 = scalarCommitment p t τx == rhs0
     condition3 = pp == (μ `pointMul` paramsH) `pointAdd` vectorCommitment p' (l `V.zip` r)
 
-    rhs0 = _
+    n = paramsN
+
+    rhs0 = toPoint (k `scalarAdd` w0) `pointAdd` (z2 `pointMul` v)
+        `pointAdd` (x `pointMul` t1)
+        `pointAdd` (x2 `pointMul` t2)
+
+    w0 = z `scalarMul` (oneN `innerP` yn)
 
     -- - z^2 * < 1^n, y^n > - z^3 * < 1^n , 2^n >
-    e0 = _
+    k = scalarNeg $
+        (z2 `scalarMul` (oneN `innerP` yn))
+        `scalarAdd` (z3 `scalarMul` toScalar (2 ^ (n+1) - 1))
 
-    pp = a `pointAdd` s `pointAdd` _
-    p' = Params paramsH (V.imap (f y) paramsVec)
+    oneN = V.generate n . const . toScalar $ 1
+    yn = V.generate n $ flip scalarPow y
 
-    f (Nonzero y) i (g,h) = (g, scalarPow (negate i) y `pointMul` h)
+    x2 = x `scalarMul` x
+    z2 = z `scalarMul` z
+    z3 = z `scalarMul` z2
+
+    pp = a `pointAdd` (x `pointMul` s)
+        `pointAdd` w1
+
+    w1 = vectorCommitment p' $ V.generate n $ \i ->
+        ( scalarNeg z
+        , (z `scalarMul` scalarPow i y) `scalarAdd` (z2 `scalarMul` toScalar (2^i))
+        )
+
+    p' = Params paramsH n (V.imap f paramsVec)
+
+    f i (g,h) = (g, scalarPow (negate i) y `pointMul` h)
 
     Bulletproof v l r (a, s, t1, t2) (τx, μ, t) = proof
 
