@@ -33,11 +33,15 @@ main = hspec $ do
             encode (VarInt 0x11) `shouldBe` "\x11"
             encode (VarInt 0xff) `shouldBe` "\xff\x01"
             encode (VarInt 0x010203) `shouldBe` "\x83\x84\x04"
+            encode (VarInt 0xff00000000) `shouldBe` "\x80\x80\x80\x80\xF0\x1F"
+            -- ^ from the monero test suite
 
         it "should correctly decode varint" $ do
             decode "\x22" `shouldBe` (Right $ VarInt 0x22)
             decode "\xff\x01" `shouldBe` (Right $ VarInt 0xff)
             decode "\x83\x84\x04" `shouldBe` (Right $ VarInt 0x010203)
+            decode "\x80\x80\x80\x80\xF0\x1F" `shouldBe` (Right $ VarInt 0xff00000000)
+            -- ^ from the monero test suite
 
 
     describe "blocks" $ do
