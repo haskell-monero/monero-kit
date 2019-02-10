@@ -23,6 +23,7 @@ dependencies:
 - bytestring
 - cereal
 - cryptonite
+- vector
 
 library:
   source-dirs: src

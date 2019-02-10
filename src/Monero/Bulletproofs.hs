@@ -23,6 +23,7 @@ import           Data.Int
 import           Data.Vector             as V
 import           Data.Word
 
+
 -- | These parameters allow us to create Pedersen commitments both to scalars
 -- and vectors
 data Params
@@ -55,6 +56,7 @@ data ProofRandomValues
     = ProofRandomValues Scalar Scalar (Vector Scalar) (Vector Scalar) Scalar
         (Nonzero Scalar) (Nonzero Scalar) Scalar Scalar (Nonzero Scalar)
 
+
 -- | Generate the randomness for a bulletproof
 proofRandomness :: Int -> IO ProofRandomValues
 proofRandomness n = attempt >>= validate
@@ -71,8 +73,9 @@ proofRandomness n = attempt >>= validate
         x /= zeroScalar && y /= zeroScalar && z /= zeroScalar
 
 
-zeroPoint = toPoint zeroScalar
-zeroScalar = throwCryptoError . scalarDecodeLong $ BS.empty
+-- ~~~~~~~~~~~ --
+-- Commitments --
+-- ~~~~~~~~~~~ --
 
 
 scalarCommitment :: Params -> Scalar -> Scalar -> Point
@@ -116,7 +119,7 @@ prove p rv n v =
     l1 = sl
 
     r0 = generate n $ \i ->
-        (scalarPow i y `scalarMul` _ (ar V.! i)) `scalarAdd` z `scalarAdd` (z2 `scalarMul` toScalar (2^i))
+        (scalarPow i y `scalarMul` toScalar (ar V.! i)) `scalarAdd` z `scalarAdd` (z2 `scalarMul` toScalar (2^i))
     r1 = sr
 
     l = l0 `vsa` V.map (scalarMul x) l1
@@ -158,6 +161,8 @@ prove p rv n v =
     ProofRandomValues γ α sl sr ρ (Nonzero y) (Nonzero z) τ1 τ2 (Nonzero x) = rv
 
 
+
+-- | Verify a bulletproof
 verify :: Params -> (Nonzero Scalar, Nonzero Scalar, Nonzero Scalar) -> Bulletproof -> Bool
 verify p@Params{..} (x, y, z) proof = condition1 && condition2 && condition3
   where
@@ -178,17 +183,43 @@ verify p@Params{..} (x, y, z) proof = condition1 && condition2 && condition3
     Bulletproof v l r (a, s, t1, t2) (τx, μ, t) = proof
 
 
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ --
+-- Extensions to the Ed25519 api --
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ --
+
+
+groupOrder :: Integer
+groupOrder = 2^252 + 27742317777372353535851937790883648493
+
+
+-- Useful constants
+
+zeroPoint = toPoint zeroScalar
+zeroScalar = throwCryptoError . scalarDecodeLong $ BS.empty
+negativeOne = throwCryptoError . scalarDecodeLong . BS.pack . littleEndian $ groupOrder - 1
+
+
+-- Some "missing" combinators
+
+scalarNeg = scalarMul negativeOne
+scalarSub x = scalarAdd x . scalarNeg
+
+
+-- | Multiply a point by an 'Int64' instead of a 'Scalar'
 pointMulInt :: Int64 -> Point -> Point
-pointMulInt x
-    | x >= 0
-    = pointMul (toScalar x)
-    | otherwise
-    = pointNegate . pointMul (toScalar $ negate x)
+pointMulInt = pointMul . toScalar
 
 
 -- | Warning this only works for non-negative values
-toScalar = throwCryptoError . scalarDecodeLong
-    . BSL.toStrict . BSB.toLazyByteString . BSB.int64LE
+toScalar x
+    | x >= 0
+    = toScalarPos x
+
+    | x < 0
+    = scalarNeg . toScalarPos . negate $ x
+  where
+    toScalarPos = throwCryptoError . scalarDecodeLong
+        . BSL.toStrict . BSB.toLazyByteString . BSB.int64LE
 
 
 -- | Vector pointwise scalar multiplication
@@ -210,3 +241,14 @@ scalarPow i x
 
     | otherwise
     = toScalar 1
+
+-- | We need a version of little endian encoding for huge ints
+littleEndian :: Integer -> [Word8]
+littleEndian x
+    | x == 0
+    = []
+
+    | otherwise
+    = fromIntegral (x .&. 255) : littleEndian (x `shiftR` 8)
+
+
