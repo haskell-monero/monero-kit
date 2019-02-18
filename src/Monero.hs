@@ -84,7 +84,7 @@ newtype instance Id Transaction = TransactionId { unTransactionId :: Hash256 }
 
 instance Serialize (Id Transaction) where
 
-    get = (TransactionId . Hash256) <$> getShortByteString 32
+    get = TransactionId . Hash256 <$> getShortByteString 32
     put (TransactionId (Hash256 x)) = putShortByteString x
 
 
@@ -326,7 +326,7 @@ blockId :: BlockHeader
     -- ^ included transactions
     -> Hash256
 blockId header coinbaseId txHashes =
-    Hash256 $ BSS.toShort $ convert $ keccak256 $ payload
+    Hash256 $ BSS.toShort . convert . keccak256 $ payload
     where
 
         txCount = Vector.length txHashes + 1 -- add one for the coinbase
@@ -405,7 +405,7 @@ getVector =
 
 
 putVector :: Serialize a => Putter (Vector a)
-putVector v = put (varInt $ Vector.length v) <* (traverse put v)
+putVector v = put (varInt $ Vector.length v) <* traverse put v
 
 
 -- | Varint serialization in Monero is different from Bitcoin's.  In this
@@ -416,7 +416,7 @@ instance Serialize VarInt where
     get = VarInt <$> go 0
         where
             go n = getWord8 >>= \w ->
-                let b = (fromIntegral $ w .&. 0x7f) `shiftL` (7 * n) in
+                let b = fromIntegral (w .&. 0x7f) `shiftL` (7 * n) in
                 if testBit w 7
                     then (+ b) <$> go (n+1)
                     else return b
