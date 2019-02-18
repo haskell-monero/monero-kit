@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.ByteString.Base16 as B16
-import qualified Data.ByteString.Short  as BSS
+import           Crypto.ECC.Edwards25519
+import           Crypto.ECC.Edwards25519.Extra
+import qualified Data.ByteString.Base16        as B16
+import qualified Data.ByteString.Short         as BSS
 import           Data.Serialize
-import qualified Data.Vector            as Vector
+import qualified Data.Vector                   as Vector
 import           Monero
 import           Monero.Bulletproofs
 import           Test.Hspec
@@ -91,6 +93,16 @@ main = hspec $ do
 
         it "should treeReduce correctly" $
             treeReduce f (Vector.fromList $ show <$> [1..7]) == "((1,(2,3)),((4,5),(6,7)))"
+
+    describe "crypto extras" $ do
+
+        s <- runIO scalarGenerate
+
+        it "should negate a scalar" $
+            scalarNeg s `scalarAdd` s == zeroScalar
+
+        it "should invert a scalar" $
+            maybe False (\sInv -> sInv `scalarMul` s == scalarOne) $ scalarInv s
 
     describe "rangeproofs" $ do
 

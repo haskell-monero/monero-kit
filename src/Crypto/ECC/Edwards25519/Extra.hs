@@ -15,8 +15,10 @@ module Crypto.ECC.Edwards25519.Extra
     , groupOrder
     , zeroPoint
     , zeroScalar
+    , scalarOne
     , negativeOne
     ) where
+
 
 import           Crypto.ECC.Edwards25519
 import           Crypto.Error
@@ -28,6 +30,7 @@ import           Data.ByteString.Lazy        as BSL
 import           Data.Int
 import           Data.Word
 
+
 -- Order of the Curve25519 group
 groupOrder :: Integer
 groupOrder = 2^252 + 27742317777372353535851937790883648493
@@ -37,6 +40,7 @@ groupOrder = 2^252 + 27742317777372353535851937790883648493
 
 zeroPoint = toPoint zeroScalar
 zeroScalar = throwCryptoError . scalarDecodeLong $ BS.empty
+scalarOne = toScalar (1 :: Word8)
 negativeOne = throwCryptoError . scalarDecodeLong
     . BS.pack . encodeLittleEndian $ groupOrder - 1
 

@@ -22,6 +22,7 @@ module Monero.Bulletproofs
     ) where
 
 
+import           Control.Arrow                 ((***))
 import           Crypto.ECC.Edwards25519       as Ed
 import           Crypto.ECC.Edwards25519.Extra
 import           Data.Bits                     as B
@@ -126,6 +127,8 @@ prove p rv v =
     vv = scalarCommitment' (toScalar v) γ
 
     a = (α `pointMul` h) `pointAdd` commitmentA
+    commitmentA = vectorCommitment' . fmap (toScalar *** toScalar) $ al `V.zip` ar
+
     s = (ρ `pointMul` h) `pointAdd` vectorCommitment' (sl `V.zip` sr)
 
 
@@ -138,17 +141,16 @@ prove p rv v =
     t2 = scalarCommitment' t2' τ2
 
 
-    l0 = fmap toScalar al `vsa` V.generate n (const z)
+    l0 = fmap toScalar al `pointwiseAdd` V.generate n (const . scalarNeg $ z)
     l1 = sl
 
     r0 = generate n $ \i ->
-        (scalarPow i y `scalarMul` toScalar (ar V.! i))
-        `scalarAdd` z
+        (scalarPow i y `scalarMul` (z `scalarAdd` toScalar (ar V.! i)))
         `scalarAdd` (z2 `scalarMul` toScalar (2^i :: Word64))
-    r1 = sr
+    r1 = V.imap (scalarMul . flip scalarPow y) sr
 
-    l = l0 `vsa` fmap (scalarMul x) l1
-    r = r0 `vsa` fmap (scalarMul x) r1
+    l = l0 `pointwiseAdd` fmap (scalarMul x) l1
+    r = r0 `pointwiseAdd` fmap (scalarMul x) r1
 
 
     τx = (τ1 `scalarMul` x) `scalarAdd` (τ2 `scalarMul` x2) `scalarAdd` (z2 `scalarMul` γ)
@@ -170,12 +172,6 @@ prove p rv v =
 
     ar :: Vector Int64
     ar = fmap (\i -> i - 1) al
-
-    commitmentA =
-        V.foldl' pointAdd zeroPoint . V.zipWith f u . paramsVec $ p
-      where
-        f (x,y) (g,h) = (x `pointMulInt` g) `pointAdd` (y `pointMulInt` h)
-        u = al `V.zip` ar
 
     -- x^2
     x2 = x `scalarMul` x
@@ -206,7 +202,7 @@ verify p@Params{..} (Nonzero x, Nonzero y, Nonzero z) proof = condition1 && cond
     -- - z^2 * < 1^n, y^n > - z^3 * < 1^n , 2^n >
     k = scalarNeg $
         (z2 `scalarMul` (oneN `innerP` yn))
-        `scalarAdd` (z3 `scalarMul` toScalar (2 ^ (n+1) - 1 :: Word64))
+        `scalarAdd` (z3 `scalarMul` toScalar (2 ^ n - 1 :: Word64))
 
     oneN = V.generate n . const . toScalar $ (1 :: Word8)
     yn = V.generate n $ flip scalarPow y
@@ -235,13 +231,13 @@ verify p@Params{..} (Nonzero x, Nonzero y, Nonzero z) proof = condition1 && cond
 
 
 -- | Vector pointwise scalar multiplication
-vsm = V.zipWith scalarMul
+pointwiseMul = V.zipWith scalarMul
 
 -- | Vector pointwise scalar addition
-vsa = V.zipWith scalarAdd
+pointwiseAdd = V.zipWith scalarAdd
 
 -- | Scalar inner product
-innerP u v = V.foldl' scalarAdd zeroScalar $ u `vsm` v
+innerP u v = V.foldl' scalarAdd zeroScalar $ u `pointwiseMul` v
 
 -- | Raise a scalar to a power
 scalarPow :: Int -> Scalar -> Scalar
