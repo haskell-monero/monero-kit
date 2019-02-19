@@ -7,6 +7,7 @@ import           Data.Bits
 import           Data.Int
 import           Data.Word
 import           Monero
+import           Monero.Bulletproofs
 
 -- | Exponentiation by squaring
 expFaster :: Bits a => a -> Point -> Point
@@ -27,6 +28,11 @@ main = do
     sk <- generateRandomKeypair
     let pk = toPublic sk
 
+    params <- generateParams 30
+    randVals <- proofRandomness 30
+    let exampleProof = prove params randVals 12345678
+        vRandVals = verifierRandomness randVals
+
     defaultMain
         [ bgroup "scalar-point multiplication"
             [ bench "multiply basepoint" $ nf toPoint x0
@@ -37,4 +43,10 @@ main = do
             [ bench "generate stealth address" $ nfIO (generateStealth pk)
             , bench "generate subaddress" $ nf (subAddress sk 1) 1
             ]
+
+        , bgroup "bulletproofs"
+            [ bench "generate a proof" $ nf (prove params randVals) 1618161
+            , bench "verify a proof" $ nf (verify params vRandVals) exampleProof
+            ]
+
         ]

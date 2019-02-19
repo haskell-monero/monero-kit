@@ -5,6 +5,7 @@
 -- version)
 -- Stage 2: port the algorithm from monero-project/monero
 
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Monero.Bulletproofs
@@ -23,6 +24,7 @@ module Monero.Bulletproofs
 
 
 import           Control.Arrow                 ((***))
+import           Control.DeepSeq               (NFData)
 import           Crypto.ECC.Edwards25519       as Ed
 import           Crypto.ECC.Edwards25519.Extra
 import           Data.Bits                     as B
@@ -30,6 +32,7 @@ import           Data.Bool
 import           Data.Int
 import           Data.Vector                   as V
 import           Data.Word
+import           GHC.Generics                  (Generic)
 
 
 -- | These parameters allow us to create Pedersen commitments both to scalars
@@ -55,7 +58,9 @@ data Bulletproof
     -- ^ (A, S, T1, T2)
     , bulletproofF2 :: (Scalar, Scalar, Scalar)
     -- ^ (τx, μ, t)
-    } deriving Eq
+    } deriving (Eq, Generic)
+
+instance NFData Bulletproof
 
 
 newtype Nonzero a = Nonzero a
